@@ -4,3 +4,6 @@
 /mp1info.exe
 *.mp1
 *.wav
+/dist
+/bin
+

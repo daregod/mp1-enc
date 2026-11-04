@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"mp1enc/internal/wav"
+	"github.com/daregod/mp1-enc/internal/wav"
 )
 
 func TestEncodeFrames(t *testing.T) {
@@ -55,5 +55,56 @@ func TestEncodeFrames(t *testing.T) {
 	}
 	if len(out) != expected {
 		t.Fatalf("size = %d bytes, want %d", len(out), expected)
+	}
+}
+func TestEncodePartialFrame(t *testing.T) {
+	in := &wav.File{Channels: 1, SampleRate: 44100, PCM: make([]int16, 10)}
+	var buf bytes.Buffer
+	frames, err := Encode(&buf, in, DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frames != 1 {
+		t.Fatalf("frames = %d, want 1", frames)
+	}
+	if buf.Len() == 0 {
+		t.Fatal("no output")
+	}
+}
+
+func TestEncodeErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		in   *wav.File
+		cfg  Config
+	}{
+		{"bad bitrate", &wav.File{Channels: 1, SampleRate: 44100, PCM: []int16{1}}, Config{BitrateIndex: 15}},
+		{"bad rate", &wav.File{Channels: 1, SampleRate: 22050, PCM: []int16{1}}, DefaultConfig()},
+		{"odd channels", &wav.File{Channels: 2, SampleRate: 44100, PCM: []int16{1}}, DefaultConfig()},
+		{"empty", &wav.File{Channels: 1, SampleRate: 44100}, DefaultConfig()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Encode(&bytes.Buffer{}, tc.in, tc.cfg); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+func TestEncodeCRC(t *testing.T) {
+	in := &wav.File{Channels: 1, SampleRate: 44100, PCM: make([]int16, 384)}
+	cfg := DefaultConfig()
+	cfg.CRC = true
+	var buf bytes.Buffer
+	if _, err := Encode(&buf, in, cfg); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.Bytes()
+	if len(out) < 4 {
+		t.Fatal("short output")
+	}
+	// Protection bit is the low bit of the second header byte: 0 with CRC.
+	if out[1]&1 != 0 {
+		t.Fatalf("CRC protection bit not set: %02X %02X", out[0], out[1])
 	}
 }

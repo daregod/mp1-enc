@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"mp1enc/internal/wav"
+	"github.com/daregod/mp1-enc/internal/wav"
 )
 
 // Encode writes an MPEG-1 Layer I stream for the given WAV data.
@@ -18,7 +18,11 @@ func Encode(w io.Writer, in *wav.File, cfg Config) (int, error) {
 	}
 
 	channels := in.Channels
-	frames := len(in.PCM) / (384 * channels)
+	if channels < 1 || len(in.PCM)%channels != 0 {
+		return 0, fmt.Errorf("PCM length %d is not divisible by %d channels", len(in.PCM), channels)
+	}
+	frameSamples := 384 * channels
+	frames := (len(in.PCM) + frameSamples - 1) / frameSamples
 	if frames == 0 {
 		return 0, fmt.Errorf("no audio frames in input")
 	}
@@ -46,7 +50,16 @@ func Encode(w io.Writer, in *wav.File, cfg Config) (int, error) {
 		}
 		maxBits := (slotSize + padBit) * 32
 
-		poly.PushFrame(in.PCM[frame*384*channels : (frame+1)*384*channels])
+		start := frame * frameSamples
+		end := start + frameSamples
+		var samples []int16
+		if end > len(in.PCM) {
+			samples = make([]int16, frameSamples)
+			copy(samples, in.PCM[start:])
+		} else {
+			samples = in.PCM[start:end]
+		}
+		poly.PushFrame(samples)
 		poly.Filter()
 
 		smr := psycho.Smr(poly.PCM(), in.SampleRate)
